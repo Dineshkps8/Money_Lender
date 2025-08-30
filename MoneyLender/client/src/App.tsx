@@ -4,12 +4,12 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Sidebar from "@/components/layout/sidebar";
-import Dashboard from "@/pages/dashboard";
-import Customers from "@/pages/customers";
-import Collections from "@/pages/collections";
-import Lines from "@/pages/lines";
-import Reports from "@/pages/reports";
-import NotFound from "@/pages/not-found";
+import Dashboard from "./pages/dashboard";
+import Customers from "./pages/customers";
+import CustomerDetails from "./pages/customer-details";
+import Collections from "./pages/collections";
+import Reports from "./pages/reports";
+import NotFound from "./pages/not-found";
 import { formatDate, getDayName } from "@/lib/date-utils";
 
 function Router() {
@@ -19,7 +19,7 @@ function Router() {
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar />
-      
+
       <div className="flex-1 overflow-auto">
         {/* Header */}
         <header className="bg-white shadow-sm border-b border-gray-200">
@@ -47,8 +47,8 @@ function Router() {
           <Switch>
             <Route path="/" component={Dashboard} />
             <Route path="/customers" component={Customers} />
+            <Route path="/customer/:id" component={CustomerDetails} />
             <Route path="/collections" component={Collections} />
-            <Route path="/lines" component={Lines} />
             <Route path="/reports" component={Reports} />
             <Route component={NotFound} />
           </Switch>

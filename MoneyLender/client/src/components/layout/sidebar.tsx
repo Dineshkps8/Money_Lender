@@ -11,8 +11,6 @@ import { cn } from "@/lib/utils";
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Customers", href: "/customers", icon: Users },
-  { name: "Daily Collections", href: "/collections", icon: ClipboardList },
-  { name: "Collection Lines", href: "/lines", icon: Calendar },
   { name: "Reports", href: "/reports", icon: BarChart3 },
 ];
 
@@ -25,13 +23,13 @@ export default function Sidebar() {
         <h2 className="text-xl font-bold text-gray-800">Collection Manager</h2>
         <p className="text-sm text-gray-500 mt-1">Weekly Lending System</p>
       </div>
-      
+
       <nav className="mt-6">
         <div className="px-4 space-y-2">
           {navigation.map((item) => {
             const isActive = location === item.href;
             const Icon = item.icon;
-            
+
             return (
               <Link key={item.name} href={item.href}>
                 <button

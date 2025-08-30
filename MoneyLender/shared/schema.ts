@@ -86,3 +86,25 @@ export type DailyCollection = typeof dailyCollections.$inferSelect;
 export type InsertDailyCollection = z.infer<typeof insertDailyCollectionSchema>;
 export type DailyEntry = typeof dailyEntries.$inferSelect;
 export type InsertDailyEntry = z.infer<typeof insertDailyEntrySchema>;
+
+export const expenseSchema = z.object({
+  id: z.string(),
+  date: z.string(),
+  collectionLine: z.string(),
+  category: z.string(),
+  amount: z.number(),
+  description: z.string(),
+  createdAt: z.string(),
+});
+
+export type Expense = z.infer<typeof expenseSchema>;
+
+export const insertExpenseSchema = z.object({
+  date: z.string(),
+  collectionLine: z.string(),
+  category: z.string(),
+  amount: z.number(),
+  description: z.string(),
+});
+
+export type InsertExpense = z.infer<typeof insertExpenseSchema>;

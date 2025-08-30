@@ -1,5 +1,6 @@
 import { type Customer, type InsertCustomer, type DailyCollection, type InsertDailyCollection, type DailyEntry, type InsertDailyEntry } from "@shared/schema";
 import { randomUUID } from "crypto";
+import * as crypto from 'crypto';
 
 export interface IStorage {
   // Customer operations
@@ -9,31 +10,41 @@ export interface IStorage {
   updateCustomer(id: string, customer: Partial<Customer>): Promise<Customer | undefined>;
   getCustomers(): Promise<Customer[]>;
   getCustomersByLine(collectionLine: string): Promise<Customer[]>;
-  
+
   // Daily collection operations
   getDailyCollection(id: string): Promise<DailyCollection | undefined>;
   createDailyCollection(collection: InsertDailyCollection): Promise<DailyCollection>;
   updateDailyCollection(id: string, collection: Partial<DailyCollection>): Promise<DailyCollection | undefined>;
   getDailyCollectionsByDate(date: string, line: string): Promise<DailyCollection[]>;
   getDailyCollectionsByCustomer(customerId: string): Promise<DailyCollection[]>;
-  
+  getDailyCollections(): Promise<DailyCollection[]>;
+  deleteDailyCollection(id: string): Promise<boolean>;
+
   // Daily entry operations
   getDailyEntry(id: string): Promise<DailyEntry | undefined>;
   createDailyEntry(entry: InsertDailyEntry): Promise<DailyEntry>;
   updateDailyEntry(id: string, entry: Partial<DailyEntry>): Promise<DailyEntry | undefined>;
   getDailyEntryByDateAndLine(date: string, line: string): Promise<DailyEntry | undefined>;
   getDailyEntries(startDate?: string, endDate?: string): Promise<DailyEntry[]>;
+
+  // Expense operations
+  getExpenses(date: string, collectionLine: string): Promise<any[]>;
+  createExpense(expense: any): Promise<any>;
+  updateExpense(id: string, expense: Partial<any>): Promise<any | undefined>;
+  deleteExpense(id: string): Promise<boolean>;
 }
 
 export class MemStorage implements IStorage {
   private customers: Map<string, Customer>;
   private dailyCollections: Map<string, DailyCollection>;
   private dailyEntries: Map<string, DailyEntry>;
+  private expenses: any[];
 
   constructor() {
     this.customers = new Map();
     this.dailyCollections = new Map();
     this.dailyEntries = new Map();
+    this.expenses = [];
   }
 
   // Customer operations
@@ -49,8 +60,8 @@ export class MemStorage implements IStorage {
 
   async createCustomer(insertCustomer: any): Promise<Customer> {
     const id = randomUUID();
-    const customer: Customer = { 
-      ...insertCustomer, 
+    const customer: Customer = {
+      ...insertCustomer,
       id,
       amountGiven: insertCustomer.amountGiven.toString(),
       interestAmount: insertCustomer.interestAmount.toString(),
@@ -66,7 +77,7 @@ export class MemStorage implements IStorage {
   async updateCustomer(id: string, updates: Partial<Customer>): Promise<Customer | undefined> {
     const customer = this.customers.get(id);
     if (!customer) return undefined;
-    
+
     const updatedCustomer = { ...customer, ...updates };
     this.customers.set(id, updatedCustomer);
     return updatedCustomer;
@@ -89,8 +100,8 @@ export class MemStorage implements IStorage {
 
   async createDailyCollection(insertCollection: InsertDailyCollection): Promise<DailyCollection> {
     const id = randomUUID();
-    const collection: DailyCollection = { 
-      ...insertCollection, 
+    const collection: DailyCollection = {
+      ...insertCollection,
       id,
       dueAmount: insertCollection.dueAmount.toString(),
       amountPaid: insertCollection.amountPaid.toString(),
@@ -104,16 +115,26 @@ export class MemStorage implements IStorage {
   async updateDailyCollection(id: string, updates: Partial<DailyCollection>): Promise<DailyCollection | undefined> {
     const collection = this.dailyCollections.get(id);
     if (!collection) return undefined;
-    
+
     const updatedCollection = { ...collection, ...updates };
     this.dailyCollections.set(id, updatedCollection);
     return updatedCollection;
   }
 
   async getDailyCollectionsByDate(date: string, line: string): Promise<DailyCollection[]> {
-    return Array.from(this.dailyCollections.values()).filter(
-      (collection) => collection.collectionDate === date && collection.collectionLine === line
-    );
+    return Array.from(this.dailyCollections.values()).filter(collection => {
+      const matchesDate = collection.collectionDate === date;
+      const matchesLine = line === "all" || collection.collectionLine === line;
+      return matchesDate && matchesLine;
+    });
+  }
+
+  async getDailyCollections(): Promise<DailyCollection[]> {
+    return Array.from(this.dailyCollections.values());
+  }
+
+  async deleteDailyCollection(id: string): Promise<boolean> {
+    return this.dailyCollections.delete(id);
   }
 
   async getDailyCollectionsByCustomer(customerId: string): Promise<DailyCollection[]> {
@@ -129,8 +150,8 @@ export class MemStorage implements IStorage {
 
   async createDailyEntry(insertEntry: InsertDailyEntry): Promise<DailyEntry> {
     const id = randomUUID();
-    const entry: DailyEntry = { 
-      ...insertEntry, 
+    const entry: DailyEntry = {
+      ...insertEntry,
       id,
       targetAmount: insertEntry.targetAmount.toString(),
       totalCollected: insertEntry.totalCollected.toString(),
@@ -148,7 +169,7 @@ export class MemStorage implements IStorage {
   async updateDailyEntry(id: string, updates: Partial<DailyEntry>): Promise<DailyEntry | undefined> {
     const entry = this.dailyEntries.get(id);
     if (!entry) return undefined;
-    
+
     const updatedEntry = { ...entry, ...updates };
     this.dailyEntries.set(id, updatedEntry);
     return updatedEntry;
@@ -162,16 +183,48 @@ export class MemStorage implements IStorage {
 
   async getDailyEntries(startDate?: string, endDate?: string): Promise<DailyEntry[]> {
     let entries = Array.from(this.dailyEntries.values());
-    
+
     if (startDate) {
       entries = entries.filter(entry => entry.entryDate >= startDate);
     }
-    
+
     if (endDate) {
       entries = entries.filter(entry => entry.entryDate <= endDate);
     }
-    
+
     return entries.sort((a, b) => new Date(b.entryDate).getTime() - new Date(a.entryDate).getTime());
+  }
+
+  // Expense operations
+  async getExpenses(date: string, collectionLine: string): Promise<any[]> {
+    return this.expenses.filter(expense =>
+      expense.date === date && expense.collectionLine === collectionLine
+    );
+  }
+
+  async createExpense(expense: any): Promise<any> {
+    const newExpense = {
+      id: crypto.randomUUID(),
+      ...expense,
+      createdAt: new Date().toISOString()
+    };
+    this.expenses.push(newExpense);
+    return newExpense;
+  }
+
+  async updateExpense(id: string, updates: Partial<any>): Promise<any | undefined> {
+    const expenseIndex = this.expenses.findIndex(expense => expense.id === id);
+    if (expenseIndex === -1) return undefined;
+
+    const updatedExpense = { ...this.expenses[expenseIndex], ...updates };
+    this.expenses[expenseIndex] = updatedExpense;
+    return updatedExpense;
+  }
+
+  async deleteExpense(id: string): Promise<boolean> {
+    const initialLength = this.expenses.length;
+    this.expenses = this.expenses.filter(expense => expense.id !== id);
+    return this.expenses.length < initialLength;
   }
 }
 

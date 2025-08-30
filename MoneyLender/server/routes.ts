@@ -131,6 +131,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/collections/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteDailyCollection(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Collection not found" });
+      }
+      res.json({ message: "Collection deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete collection" });
+    }
+  });
+
   // Daily entry routes
   app.get("/api/entries", async (req, res) => {
     try {
@@ -189,7 +201,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const entries = await storage.getDailyEntries(today, today);
       
       const todayCollected = entries.reduce((sum, entry) => sum + parseFloat(entry.totalCollected), 0);
-      const todayTarget = entries.reduce((sum, entry) => sum + parseFloat(entry.targetAmount), 0);
+      
+      // Calculate proper target based on active customers weekly amounts
+      const todayTarget = activeCustomers.reduce((sum, customer) => {
+        const weeklyAmount = parseFloat(customer.totalAmount) / 10;
+        return sum + weeklyAmount;
+      }, 0);
+      
       const todayExpenses = entries.reduce((sum, entry) => sum + parseFloat(entry.expenses), 0);
       
       // Calculate profit from new loans (interest + document charges)
@@ -205,6 +223,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Calculate total profit 
       const totalProfit = newLoansProfit + todayCollectionProfit;
       
+      // Calculate total amount given per line
+      const lineAmounts = {
+        "monday-morning": 0,
+        "monday-evening": 0,
+        "tuesday-morning": 0,
+        "wednesday-morning": 0,
+        "wednesday-evening": 0,
+        "thursday-morning": 0
+      };
+      
+      activeCustomers.forEach(customer => {
+        const amountGiven = parseFloat(customer.amountGiven || "0");
+        if (lineAmounts.hasOwnProperty(customer.collectionLine)) {
+          lineAmounts[customer.collectionLine] += amountGiven;
+        }
+      });
+      
       const stats = {
         activeLoans: activeCustomers.length,
         todayTarget: todayTarget,
@@ -213,12 +248,128 @@ export async function registerRoutes(app: Express): Promise<Server> {
         newLoansProfit: newLoansProfit,
         todayCollectionProfit: todayCollectionProfit,
         totalProfit: totalProfit,
-        todayExpenses: todayExpenses
+        todayExpenses: todayExpenses,
+        lineAmounts: lineAmounts
       };
       
       res.json(stats);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch dashboard statistics" });
+    }
+  });
+
+  // Consolidated dashboard statistics route
+  app.get("/api/dashboard/consolidated-stats", async (req, res) => {
+    try {
+      const { startDate, endDate } = req.query;
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "Start date and end date are required" });
+      }
+
+      const customers = await storage.getCustomers();
+      const activeCustomers = customers.filter(c => c.status === "active");
+      const completedCustomers = customers.filter(c => c.status === "completed");
+      
+      // Get collections data for the date range
+      const collections = await storage.getDailyCollections();
+      const filteredCollections = collections.filter(c => 
+        c.collectionDate >= startDate && c.collectionDate <= endDate
+      );
+      
+      const totalCollected = filteredCollections.reduce((sum, collection) => 
+        sum + parseFloat(collection.amountPaid || "0"), 0
+      );
+      
+      const entries = await storage.getDailyEntries(startDate as string, endDate as string);
+      const totalExpenses = entries.reduce((sum, entry) => sum + parseFloat(entry.expenses), 0);
+      
+      // Calculate separate interest and document charges
+      const interestEarnings = customers.reduce((sum, customer) => {
+        return sum + parseFloat(customer.interestAmount);
+      }, 0);
+      
+      const documentCharges = customers.reduce((sum, customer) => {
+        return sum + parseFloat(customer.documentCharge);
+      }, 0);
+      
+      // Calculate profit from new loans (interest + document charges)
+      const newLoansProfit = interestEarnings + documentCharges;
+      
+      // Calculate profit from collections (collections - expenses)
+      const totalCollectionProfit = totalCollected - totalExpenses;
+      
+      // Calculate total profit 
+      const totalProfit = newLoansProfit + totalCollectionProfit;
+      
+      // Calculate total outstanding amount
+      const totalOutstanding = activeCustomers.reduce((sum, customer) => {
+        return sum + parseFloat(customer.totalAmount);
+      }, 0);
+      
+      // Calculate total amount given per line
+      const lineAmounts = {
+        "monday-morning": 0,
+        "monday-evening": 0,
+        "tuesday-morning": 0,
+        "wednesday-morning": 0,
+        "wednesday-evening": 0,
+        "thursday-morning": 0
+      };
+      
+      activeCustomers.forEach(customer => {
+        const amountGiven = parseFloat(customer.amountGiven || "0");
+        if (lineAmounts.hasOwnProperty(customer.collectionLine)) {
+          lineAmounts[customer.collectionLine] += amountGiven;
+        }
+      });
+      
+      const stats = {
+        activeLoans: activeCustomers.length,
+        completedLoans: completedCustomers.length,
+        amountCollected: totalCollected,
+        interestEarnings: interestEarnings,
+        documentCharges: documentCharges,
+        totalCollectionProfit: totalCollectionProfit,
+        totalExpenses: totalExpenses,
+        totalOutstanding: totalOutstanding,
+        lineAmounts: lineAmounts
+      };
+      
+      res.json(stats);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch consolidated dashboard statistics" });
+    }
+  });
+
+  // Expense routes
+  app.get("/api/expenses", async (req, res) => {
+    try {
+      const { date, collectionLine } = req.query;
+      const expenses = await storage.getExpenses(date as string, collectionLine as string);
+      res.json(expenses);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch expenses" });
+    }
+  });
+
+  app.post("/api/expenses", async (req, res) => {
+    try {
+      const { date, collectionLine, expenses, totalAmount } = req.body;
+      
+      // Save each expense entry
+      for (const expense of expenses) {
+        await storage.createExpense({
+          date,
+          collectionLine,
+          category: expense.category,
+          amount: parseFloat(expense.amount),
+          description: expense.description || ""
+        });
+      }
+      
+      res.status(201).json({ message: "Expenses saved successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to save expenses" });
     }
   });
 

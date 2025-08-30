@@ -91,14 +91,18 @@ export default function Collections() {
     },
   });
 
-  const handleSavePayment = (customer: Customer, amountPaid: string, paymentStatus: string) => {
+  const handleSavePayment = (customer: Customer, amountPaid: string, paymentMode: string, paymentStatus: string) => {
     const collection = collections.find(c => c.customerId === customer.id);
     
     if (collection) {
       // Update existing collection
       updateCollectionMutation.mutate({
         id: collection.id,
-        data: { amountPaid, paymentStatus }
+        data: { 
+          amountPaid: (parseFloat(amountPaid) || 0).toString(), 
+          paymentMode, 
+          paymentStatus 
+        }
       });
     } else {
       // Create new collection record
@@ -107,8 +111,9 @@ export default function Collections() {
         customerId: customer.id,
         collectionDate: selectedDate,
         collectionLine: selectedLine,
-        dueAmount: weeklyAmount,
-        amountPaid: parseFloat(amountPaid) || 0,
+        dueAmount: weeklyAmount.toString(),
+        amountPaid: (parseFloat(amountPaid) || 0).toString(),
+        paymentMode,
         paymentStatus
       });
     }
@@ -118,7 +123,10 @@ export default function Collections() {
     sum + parseFloat(collection.amountPaid || "0"), 0
   );
 
-  const targetAmount = customers.length * 500; // Rough estimate
+  const targetAmount = customers.reduce((sum, customer) => {
+    const weeklyAmount = parseFloat(customer.totalAmount) / 10;
+    return sum + weeklyAmount;
+  }, 0);
 
   const handleSaveDailyEntry = () => {
     const entryData: InsertDailyEntry = {
@@ -218,10 +226,15 @@ export default function Collections() {
         {/* Collection Entry */}
         <Card>
           <CardHeader>
-            <CardTitle>
-              Record Collections - {getCollectionLineDisplay(selectedLine)}
-              {selectedArea && selectedArea !== "all-areas" && ` - ${selectedArea} Area`}
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>
+                Record Collections - {getCollectionLineDisplay(selectedLine)}
+                {selectedArea && selectedArea !== "all-areas" && ` - ${selectedArea} Area`}
+              </CardTitle>
+              <Button onClick={() => window.location.href = "/collections"}>
+                Start Collection
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {customers.length === 0 ? (
@@ -237,6 +250,7 @@ export default function Collections() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer & Area</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due Amount</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Amount Paid</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment Mode</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
                       </tr>
@@ -260,43 +274,7 @@ export default function Collections() {
                   </table>
                 </div>
 
-                <div className="mt-6 flex items-center justify-between">
-                  <div className="flex space-x-4">
-                    <div>
-                      <Label className="block text-sm font-medium text-gray-700 mb-1">Day's Expenses</Label>
-                      <Input 
-                        type="number" 
-                        placeholder="0" 
-                        value={expenses}
-                        onChange={(e) => setExpenses(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label className="block text-sm font-medium text-gray-700 mb-1">Document Charges</Label>
-                      <Input 
-                        type="number" 
-                        placeholder="0"
-                        value={docCharges}
-                        onChange={(e) => setDocCharges(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <Label className="block text-sm font-medium text-gray-700 mb-1">New Loans Given</Label>
-                      <Input 
-                        type="number" 
-                        placeholder="0"
-                        value={newLoansGiven}
-                        onChange={(e) => setNewLoansGiven(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <Button 
-                    onClick={handleSaveDailyEntry}
-                    disabled={saveDailyEntryMutation.isPending}
-                  >
-                    {saveDailyEntryMutation.isPending ? "Saving..." : "Save Daily Entry"}
-                  </Button>
-                </div>
+                
               </>
             )}
           </CardContent>
@@ -310,15 +288,16 @@ interface CollectionRowProps {
   customer: Customer;
   collection?: DailyCollection;
   weeklyAmount: number;
-  onSavePayment: (customer: Customer, amountPaid: string, paymentStatus: string) => void;
+  onSavePayment: (customer: Customer, amountPaid: string, paymentMode: string, paymentStatus: string) => void;
 }
 
 function CollectionRow({ customer, collection, weeklyAmount, onSavePayment }: CollectionRowProps) {
   const [amountPaid, setAmountPaid] = useState(collection?.amountPaid || "");
+  const [paymentMode, setPaymentMode] = useState(collection?.paymentMode || "cash");
   const [paymentStatus, setPaymentStatus] = useState(collection?.paymentStatus || "pending");
 
   const handleSave = () => {
-    onSavePayment(customer, amountPaid, paymentStatus);
+    onSavePayment(customer, amountPaid, paymentMode, paymentStatus);
   };
 
   return (
@@ -343,8 +322,20 @@ function CollectionRow({ customer, collection, weeklyAmount, onSavePayment }: Co
         />
       </td>
       <td className="px-4 py-4">
+        <Select value={paymentMode} onValueChange={setPaymentMode}>
+          <SelectTrigger className="w-20">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="cash">Cash</SelectItem>
+            <SelectItem value="gpay">GPay</SelectItem>
+            <SelectItem value="bank_transfer">Bank</SelectItem>
+          </SelectContent>
+        </Select>
+      </td>
+      <td className="px-4 py-4">
         <Select value={paymentStatus} onValueChange={setPaymentStatus}>
-          <SelectTrigger className="w-28">
+          <SelectTrigger className="w-24">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
